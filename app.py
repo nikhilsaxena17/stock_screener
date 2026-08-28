@@ -9,6 +9,7 @@ Run with:
     streamlit run app.py
 """
 
+import io
 import warnings
 from datetime import datetime
 
@@ -23,20 +24,52 @@ warnings.filterwarnings("ignore")
 st.set_page_config(page_title="S&P 500 Breakout Screener", layout="wide")
 
 # --------------------------------------------------------------------------
-# 1. Universe: pull current S&P 500 constituents from Wikipedia
+# 1. Universe: pull current S&P 500 constituents (Wikipedia, with a fallback)
 # --------------------------------------------------------------------------
 
-@st.cache_data(ttl=60 * 60 * 24)
-def get_sp500_tickers():
+def _tickers_from_wikipedia():
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     headers = {"User-Agent": "Mozilla/5.0"}
-    html = requests.get(url, headers=headers, timeout=15).text
-    tables = pd.read_html(html)
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    # pandas requires a file-like object, not a raw string, for HTML text
+    tables = pd.read_html(io.StringIO(resp.text))
     df = tables[0]
     df["Symbol"] = df["Symbol"].str.replace(".", "-", regex=False)  # BRK.B -> BRK-B
     return df[["Symbol", "Security", "GICS Sector"]].rename(
         columns={"Security": "Name", "GICS Sector": "Sector"}
     )
+
+
+def _tickers_from_github_fallback():
+    # A community-maintained, regularly-updated mirror of S&P 500 constituents.
+    url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
+    df = pd.read_csv(url)
+    df["Symbol"] = df["Symbol"].str.replace(".", "-", regex=False)
+    return df[["Symbol", "Security", "GICS Sector"]].rename(
+        columns={"Security": "Name", "GICS Sector": "Sector"}
+    )
+
+
+@st.cache_data(ttl=60 * 60 * 24)
+def get_sp500_tickers():
+    try:
+        return _tickers_from_wikipedia()
+    except Exception:
+        st.info(
+            "Couldn't load the ticker list from Wikipedia (it sometimes blocks "
+            "automated requests) — using a backup source instead.",
+            icon="ℹ️",
+        )
+        try:
+            return _tickers_from_github_fallback()
+        except Exception:
+            st.error(
+                "Couldn't load the S&P 500 ticker list from either source. "
+                "This is usually a network issue on the hosting side — try "
+                "again in a bit."
+            )
+            st.stop()
 
 
 # --------------------------------------------------------------------------
