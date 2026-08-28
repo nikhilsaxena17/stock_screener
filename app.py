@@ -599,8 +599,7 @@ else:
             .style.format({
                 "momentum_score": "{:.2f}", "ret_3m": "{:.1f}%", "ret_6m": "{:.1f}%",
                 "rsi": "{:.0f}", "forward_return": "{:.1f}%",
-            })
-            .background_gradient(subset=["forward_return"], cmap="RdYlGn"),
+            }),
             use_container_width=True, hide_index=True,
         )
 
